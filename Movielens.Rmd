@@ -1,0 +1,196 @@
+---
+title: "MovieLens Analysis"
+author: "Derrick"
+date: "2023-12-12"
+output:
+  word_document: default
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## MovieLens Data Analysis
+
+This dataset describes 5-star rating and free-text tagging activity from [MovieLens](http://movielens.org), a movie recommendation service. It contains 100836 ratings and 3683 tag applications across 9742 movies. These data were created by 610 users between March 29, 1996 and September 24, 2018. This dataset was generated on September 26, 2018.
+
+The data are contained in the files links.csv, movies.csv, ratings.csv and tags.csv
+
+```{r Loading the packages}
+install.packages("tidyverse")
+install.packages("wordcloud")
+install.packages("wordcloud2")
+install.packages("tm")
+install.packages("slam")
+library(dplyr)
+library(pillar)
+library(ggplot2)
+library(tidyverse)
+library(readr)
+library(tidyr)
+library(lubridate)
+library(wordcloud)
+library(wordcloud2)
+library(tm)
+library(slam)
+```
+
+```{r Importing the data}
+ratings <- read_csv("ratings.csv")
+movies <- read_csv("movies.csv")
+links <- read_csv("links.csv")
+tags <- read_csv("tags.csv")
+```
+
+```{r Exploring the Data}
+str(links)
+str(movies)
+str(ratings)
+str(tags)
+
+# Since the links and the movies have same number of observations and variables they can be merged into one data
+Mlinks <- merge(links, movies, by=c('movieId'))
+
+# The ratings and the tags can also be merged into one data
+Rtags <- bind_rows(ratings, tags)
+```
+
+### Cleaning the Rtags Dataset
+
+```{r Handling missing values}
+# Identify missing values in Rtags
+missing_values <- colSums(is.na(Rtags))
+
+# Replace missing values with a specific value (e.g., 0)
+Rtags$rating[is.na(Rtags$rating)] <- 0
+
+# Replace missing values with a specific value (e.g., no)thing
+Rtags$tag[is.na(Rtags$tag)] <- "no tag"
+
+# View columns with missing values
+print(missing_values[missing_values > 0])
+```
+
+### Cleaning the Mlinks Dataset
+
+```{r feature engineering}
+# Cleaning the genres column
+Mlinks$SingleGenre <- sapply(strsplit(as.character(Mlinks$genres), "|", fixed = TRUE), function(x) x[1])
+```
+
+```{r continuation}
+# Use separate function to split the title column
+Mlinks <- separate(Mlinks, title, into = c("Title", "Year"), sep = " \\(")
+
+# Remove the closing parenthesis from the "Year" column
+Mlinks$Year <- gsub("\\)", "", Mlinks$Year)
+
+# Print the resulting dataframe
+head(Mlinks)
+```
+
+```{r Handling missing values in Mlinks}
+# Year the column to be modified
+Mlinks$Year <- as.numeric(gsub("[^0-9]+", "0", Mlinks$Year))
+
+# Fill in missing values with 0
+Mlinks$Year[is.na(Mlinks$Year)] <- 0
+
+# Fill in missing values with 0
+Mlinks$tmdbId[is.na(Mlinks$tmdbId)] <- 0
+
+# Identify missing values in Mlinks
+missing_values <- colSums(is.na(Mlinks))
+# View columns with missing values
+print(missing_values[missing_values > 0])
+```
+
+```{r simple statistics}
+summary(Mlinks)
+summary(Rtags)
+```
+
+```{r Handling Duplicate Data}
+# Identify and remove duplicate rows
+Rtags <- distinct(Rtags)
+Mlinks <- distinct(Mlinks)
+```
+
+```{r EDA}
+# Univariate Analysis
+# Visualize the distribution of numerical variables
+# Example: Histogram for a numerical variable
+ggplot(Rtags, aes(x = rating)) +
+  geom_histogram(binwidth = 0.5, fill = "lightblue", color = "black") +
+  labs(title = "Distribution of ratings")
+```
+
+```{r Violin plot}
+ggplot(Rtags, aes(x = 1, y = rating)) +
+  geom_violin(color="black",fill="lightblue") +
+  labs(title = "Violin Plot to show rating distribution", y = "rating")
+```
+
+```{r Genre Distribution}
+
+Count_movies <- Mlinks %>% 
+                    group_by(SingleGenre) %>% 
+                            dplyr::summarize(Total = n())
+
+# Define color palette for genres
+genre_colors <- c(
+ "Western" = "darkblue",
+ "War" = "red",
+ "Thriller" = "green",
+ "Sci-Fi" = "purple",
+ "Romance" = "orange",
+ "Mystery" = "yellow",
+ "Musical" = "pink",
+ "Horror" = "#c77dff",
+ "Film-Noir" = "lightblue",
+ "Fantasy" = "darkblue",
+ "Drama" = "darkgreen",
+ "Documentary" = "lightgreen",
+ "Crime" = "#1d3557",
+ "Comedy" = "black",
+ "Children" = "#ff006e",
+ "Animation" = "#8d99ae",
+ "Adventure" = "#f2e8cf",
+ "Action" = "brown",
+ "(no genres listed)" = "#aacc00"
+)
+
+ggplot(Mlinks, aes(x = SingleGenre, fill = SingleGenre)) +
+  geom_bar(width = 0.9) +  # Wider bars
+  labs(title = "Distribution of Movies by Genre", x = "Genre", y = "Count") +
+  coord_flip() +
+  scale_fill_manual(values = genre_colors) +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.05))) +
+  ggtitle("Distribution of Movies by Genre") 
+```
+
+### A wordcloud to show tags
+
+```{r word cloud}
+
+tag_data <- tags$tag
+tag_data <- as.data.frame(tag_data)
+
+word_freq <- table(tag_data$tag)
+word_freq <- as.data.frame(word_freq)
+
+# Generate word cloud
+cloud <- wordcloud(
+  words = tag_data,
+  min.freq = 2,
+  scale = c(3, 0.5),
+  colors = brewer.pal(8, "Dark2"),
+  random.order = FALSE,
+  max.words = 100,
+  coords = NULL # Initially leave coords empty
+)
+```
